@@ -38,6 +38,7 @@ trait-variant = "0.1"
 # tracing
 # note: it's important to keep the version of tracing in sync with containerd-shimkit's tracing-subscriber
 tracing = { workspace = true, optional = true }
+wac-graph = "0.9.0"
 
 [target.'cfg(unix)'.dependencies]
 caps = "0.5"

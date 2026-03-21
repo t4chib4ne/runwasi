@@ -1,10 +1,11 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, bail};
+use anyhow::Context;
 use oci_spec::image::Descriptor;
 use oci_spec::runtime::Spec;
 use serde::{Deserialize, Serialize};
+use wac_graph::{CompositionGraph, EncodeOptions, types::Package};
 use wasmparser::Parser;
 
 use crate::sandbox::path::PathResolve;
@@ -68,11 +69,41 @@ impl<'a> Source<'a> {
                 Ok(Cow::Owned(std::fs::read(path)?))
             }
             Source::Oci([module]) => Ok(Cow::Borrowed(&module.layer)),
-            Source::Oci(_modules) => {
-                bail!("only a single module is supported when using images with OCI layers")
-            }
+            Source::Oci(modules) => plug_layers(modules),
         }
     }
+}
+
+pub fn plug_layers<'a>(modules: &[WasmLayer]) -> anyhow::Result<Cow<'a, [u8]>> {
+    let mut graph = CompositionGraph::new();
+
+    let mut modules_iter = modules.iter();
+
+    // Get the socket as a base. It is expected to be the first one.
+    let socket = Package::from_bytes(
+        "socket",
+        None,
+        modules_iter.next().expect("no wasm layers").layer.clone(),
+        graph.types_mut(),
+    )?;
+    let socket = graph.register_package(socket)?;
+
+    let mut plugs = Vec::new();
+    for plug in modules_iter {
+        // TODO(t4chib4ne): somehow avoid clone.
+        let plug = Package::from_bytes(
+            plug.config.digest().digest(),
+            None,
+            plug.layer.clone(),
+            graph.types_mut(),
+        )?;
+        let plug = graph.register_package(plug)?;
+        plugs.push(plug);
+    }
+
+    wac_graph::plug(&mut graph, plugs, socket)?;
+
+    Ok(Cow::Owned(graph.encode(EncodeOptions::default())?))
 }
 
 /// The entrypoint for a WASI module / component.

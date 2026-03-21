@@ -173,6 +173,14 @@ impl Compiler for WasmtimeCompiler {
     async fn compile(&self, layers: &[WasmLayer]) -> Result<Vec<Option<Vec<u8>>>> {
         let mut compiled_layers = Vec::<Option<Vec<u8>>>::with_capacity(layers.len());
 
+        // We are doing some compositioning which we cannot precompile.
+        if layers.len() > 1 {
+            for _ in 0..layers.len() {
+                compiled_layers.push(None);
+            }
+            return Ok(compiled_layers);
+        }
+
         for layer in layers {
             if wasmtime::Engine::detect_precompiled(&layer.layer).is_some() {
                 log::info!("Already precompiled");
