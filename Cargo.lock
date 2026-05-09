@@ -1021,6 +1021,7 @@ dependencies = [
  "serial_test",
  "tokio",
  "tokio-util",
+ "tracing",
  "wasmtime",
  "wasmtime-wasi",
  "wasmtime-wasi-http",

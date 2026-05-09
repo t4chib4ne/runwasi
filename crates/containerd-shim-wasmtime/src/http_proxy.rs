@@ -148,6 +148,16 @@ struct ProxyHandler {
     tracker: TaskTracker,
 }
 
+impl std::fmt::Debug for ProxyHandler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "ProxyHandler at {} requests",
+            self.next_id.load(Ordering::Relaxed)
+        )
+    }
+}
+
 impl ProxyHandler {
     fn new(
         instance_pre: ProxyPre<WasiPreview2Ctx>,
@@ -178,6 +188,7 @@ impl ProxyHandler {
         Store::new(engine, ctx)
     }
 
+    #[tracing::instrument(level = "Info")]
     async fn handle_request(
         self: Arc<Self>,
         req: Request,
