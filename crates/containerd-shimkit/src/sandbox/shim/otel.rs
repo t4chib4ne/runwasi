@@ -26,10 +26,10 @@
 use std::collections::HashMap;
 use std::env;
 
-use opentelemetry::Context;
 use opentelemetry::global::{self, set_text_map_propagator};
 use opentelemetry::propagation::Extractor;
 use opentelemetry::trace::TraceError;
+use opentelemetry::{Context, KeyValue};
 pub use opentelemetry_otlp::{
     OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_PROTOCOL, OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
 };
@@ -37,7 +37,7 @@ use opentelemetry_otlp::{
     OTEL_EXPORTER_OTLP_PROTOCOL_DEFAULT, Protocol, SpanExporterBuilder, WithExportConfig,
 };
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry_sdk::{runtime, trace as sdktrace};
+use opentelemetry_sdk::{Resource, runtime, trace as sdktrace};
 use tracing::span::{Attributes, Id};
 use tracing::{Span, Subscriber};
 use tracing_opentelemetry::{OpenTelemetrySpanExt as _, OtelData};
@@ -49,11 +49,13 @@ const OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF: &str = "http/protobuf";
 const OTEL_EXPORTER_OTLP_PROTOCOL_GRPC: &str = "grpc";
 const OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: &str = "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL";
 const OTEL_SDK_DISABLED: &str = "OTEL_SDK_DISABLED";
+const OTEL_SERVICE_NAME: &str = "OTEL_SERVICE_NAME";
 
 /// Configuration struct for OpenTelemetry setup.
 pub struct Config {
     traces_endpoint: String,
     traces_protocol: Protocol,
+    container_name: Option<String>,
 }
 
 /// Returns `true` if traces are enabled, `false` otherwise.
@@ -82,6 +84,7 @@ impl Config {
         Ok(Self {
             traces_endpoint,
             traces_protocol,
+            container_name: None,
         })
     }
 
@@ -102,6 +105,10 @@ impl Config {
 
         tracing::subscriber::set_global_default(subscriber)?;
         Ok(ShutdownGuard)
+    }
+
+    pub fn set_container_name(&mut self, name: String) {
+        self.container_name = Some(name);
     }
 
     /// Returns the current trace context as a JSON string.
@@ -138,6 +145,15 @@ impl Config {
     }
 
     fn init_tracer(&self) -> Result<opentelemetry_sdk::trace::Tracer, TraceError> {
+        let container_name = self
+            .container_name
+            .clone()
+            .unwrap_or_else(|| String::from("no name"));
+        let resource = Resource::new(vec![
+            KeyValue::new("container.name", container_name),
+            KeyValue::new("service.name", traces_service_name_from_env()),
+        ]);
+
         let exporter = match self.traces_protocol {
             Protocol::HttpBinary => self.init_tracer_http(),
             Protocol::HttpJson => self.init_tracer_http(),
@@ -147,7 +163,7 @@ impl Config {
         opentelemetry_otlp::new_pipeline()
             .tracing()
             .with_exporter(exporter)
-            .with_trace_config(sdktrace::config())
+            .with_trace_config(sdktrace::config().with_resource(resource))
             .install_batch(runtime::Tokio)
     }
 }
@@ -184,6 +200,11 @@ fn traces_protocol_from_env() -> anyhow::Result<Protocol> {
         ))?,
     };
     Ok(protocol)
+}
+
+/// Sets the OTLP service name from environment variables or uses a default value.
+fn traces_service_name_from_env() -> String {
+    env::var(OTEL_SERVICE_NAME).unwrap_or_else(|_| String::from("containerd"))
 }
 
 /// A layer that renames spans to include the target in the span name.

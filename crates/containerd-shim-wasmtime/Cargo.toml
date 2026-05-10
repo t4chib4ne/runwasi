@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 containerd-shim-wasm = { workspace = true, features = ["opentelemetry"] }
+containerd-shimkit = { workspace = true, features = ["opentelemetry"] }
 libc = { workspace = true }
 log = { workspace = true }
 hyper = { workspace = true }

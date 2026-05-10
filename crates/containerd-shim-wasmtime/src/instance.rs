@@ -7,12 +7,13 @@ use containerd_shim_wasm::sandbox::context::{
     Entrypoint, RuntimeContext, WasmBinaryType, WasmLayer,
 };
 use containerd_shim_wasm::shim::{Compiler, Shim, Version, version};
+use containerd_shimkit::sandbox::shim::otel;
 use tokio_util::sync::CancellationToken;
 use wasmtime::component::types::ComponentItem;
 use wasmtime::component::{self, Component, ResourceTable};
 use wasmtime::{Config, Module, Precompiled, Store};
-use wasmtime_wasi::p2::bindings::Command;
 use wasmtime_wasi::p1::{self as wasi_preview1, WasiP1Ctx};
+use wasmtime_wasi::p2::bindings::Command;
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use wasmtime_wasi_http::bindings::ProxyPre;
 use wasmtime_wasi_http::{WasiHttpCtx, WasiHttpView};
@@ -150,6 +151,25 @@ impl Shim for WasmtimeShim {
 
 impl Sandbox for WasmtimeSandbox {
     async fn run_wasi(&self, ctx: &impl RuntimeContext) -> Result<i32> {
+        if otel::traces_enabled() {
+            let mut config =
+                otel::Config::build_from_env().context("Failed to build OpenTelemetry Config.")?;
+            if let Some(name) = ctx.get_annotations("de.fhac.container.name") {
+                config.set_container_name(name.to_owned());
+            }
+            let _guard = config
+                .init()
+                .context("Failed to initialize OpenTelemetry.")?;
+            self.inner_run_wasi(ctx).await
+        } else {
+            self.inner_run_wasi(ctx).await
+        }
+    }
+}
+
+impl WasmtimeSandbox {
+    #[tracing::instrument(level = "Info", skip(self, ctx))]
+    async fn inner_run_wasi(&self, ctx: &impl RuntimeContext) -> Result<i32> {
         log::info!("setting up wasi");
 
         let Entrypoint {
@@ -159,7 +179,11 @@ impl Sandbox for WasmtimeSandbox {
             name: _,
         } = ctx.entrypoint();
 
-        let wasm_bytes = &source.as_bytes()?;
+        let wasm_bytes = {
+            let span = tracing::span!(tracing::Level::INFO, "wasm bytes");
+            let _enter = span.enter();
+            &source.as_bytes()?
+        };
 
         self.execute(ctx, wasm_bytes, func).await.into_error_code()
     }
@@ -264,9 +288,13 @@ impl WasmtimeSandbox {
                 wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
                 wasmtime_wasi_http::add_only_http_to_linker_async(&mut linker)?;
 
-                let pre = linker.instantiate_pre(&component)?;
-                log::info!("pre-instantiate_pre");
-                let instance = ProxyPre::new(pre)?;
+                let instance = {
+                    let span = tracing::span!(tracing::Level::INFO, "pre instantiate");
+                    let _enter = span.enter();
+                    let pre = linker.instantiate_pre(&component)?;
+                    log::info!("pre-instantiate_pre");
+                    ProxyPre::new(pre)?
+                };
 
                 log::info!("starting HTTP server");
                 let cancel = self.cancel.clone();
@@ -347,6 +375,7 @@ impl WasmtimeSandbox {
         wait_for_signal().await
     }
 
+    #[tracing::instrument(level = "info", skip(self, ctx, wasm_binary))]
     async fn execute(
         &self,
         ctx: &impl RuntimeContext,

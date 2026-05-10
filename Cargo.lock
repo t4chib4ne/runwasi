@@ -1014,6 +1014,7 @@ version = "0.6.0"
 dependencies = [
  "anyhow",
  "containerd-shim-wasm",
+ "containerd-shimkit",
  "hyper 1.8.1",
  "libc",
  "log",
