@@ -180,7 +180,7 @@ impl WasmtimeSandbox {
         } = ctx.entrypoint();
 
         let wasm_bytes = {
-            let span = tracing::span!(tracing::Level::INFO, "wasm bytes");
+            let span = tracing::span!(tracing::Level::INFO, "wasm_bytes");
             let _enter = span.enter();
             &source.as_bytes()?
         };
@@ -194,6 +194,7 @@ impl Compiler for WasmtimeCompiler {
         self.0.precompile_compatibility_hash()
     }
 
+    #[tracing::instrument(level = "Info", skip(self, layers))]
     async fn compile(&self, layers: &[WasmLayer]) -> Result<Vec<Option<Vec<u8>>>> {
         let mut compiled_layers = Vec::<Option<Vec<u8>>>::with_capacity(layers.len());
 
@@ -289,7 +290,7 @@ impl WasmtimeSandbox {
                 wasmtime_wasi_http::add_only_http_to_linker_async(&mut linker)?;
 
                 let instance = {
-                    let span = tracing::span!(tracing::Level::INFO, "pre instantiate");
+                    let span = tracing::span!(tracing::Level::INFO, "pre_instantiate");
                     let _enter = span.enter();
                     let pre = linker.instantiate_pre(&component)?;
                     log::info!("pre-instantiate_pre");
