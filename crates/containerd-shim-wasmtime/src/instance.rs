@@ -285,9 +285,14 @@ impl WasmtimeSandbox {
         let status = match target {
             ComponentTarget::HttpProxy => {
                 log::info!("Found HTTP proxy target");
-                let mut linker = component::Linker::new(&self.engine);
-                wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
-                wasmtime_wasi_http::add_only_http_to_linker_async(&mut linker)?;
+                let linker = {
+                    let span = tracing::span!(tracing::Level::INFO, "setup_linker");
+                    let _enter = span.enter();
+                    let mut linker = component::Linker::new(&self.engine);
+                    wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
+                    wasmtime_wasi_http::add_only_http_to_linker_async(&mut linker)?;
+                    linker
+                };
 
                 let instance = {
                     let span = tracing::span!(tracing::Level::INFO, "pre_instantiate");
@@ -376,7 +381,7 @@ impl WasmtimeSandbox {
         wait_for_signal().await
     }
 
-    #[tracing::instrument(level = "info", skip(self, ctx, wasm_binary))]
+    #[tracing::instrument(level = "Info", skip(self, ctx, wasm_binary))]
     async fn execute(
         &self,
         ctx: &impl RuntimeContext,

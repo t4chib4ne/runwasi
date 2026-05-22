@@ -64,6 +64,7 @@ async fn tcp_accept(listener: &TcpListener) -> Option<TcpStream> {
     }
 }
 
+#[tracing::instrument(level = "Info", skip(ctx, instance, cancel))]
 pub(crate) async fn serve_conn(
     ctx: &impl RuntimeContext,
     instance: ProxyPre<WasiPreview2Ctx>,
