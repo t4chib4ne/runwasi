@@ -308,10 +308,18 @@ impl WasmtimeSandbox {
             }
             ComponentTarget::Command => {
                 log::info!("Found command target");
-                let wasi_ctx = WasiPreview2Ctx::new(ctx)?;
-                let (mut store, linker) = store_for_context(&self.engine, wasi_ctx)?;
+                let (mut store, linker) = {
+                    let span = tracing::span!(tracing::Level::INFO, "setup_linker");
+                    let _enter = span.enter();
+                    let wasi_ctx = WasiPreview2Ctx::new(ctx)?;
+                    store_for_context(&self.engine, wasi_ctx)?
+                };
 
-                let command = Command::instantiate_async(&mut store, &component, &linker).await?;
+                let command = {
+                    let span = tracing::span!(tracing::Level::INFO, "instantiate");
+                    let _enter = span.enter();
+                    Command::instantiate_async(&mut store, &component, &linker).await?
+                };
 
                 command
                     .wasi_cli_run()
