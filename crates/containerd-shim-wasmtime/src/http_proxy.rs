@@ -194,11 +194,18 @@ impl ProxyHandler {
             req.uri()
         );
 
-        let mut store = self.wasi_store_for_request(req_id);
+        let span = tracing::span!(tracing::Level::INFO, "instantiate_proxy");
+        let (proxy, store, req, out) = {
+            let _enter = span.enter();
 
-        let req = store.data_mut().new_incoming_request(Scheme::Http, req)?;
-        let out = store.data_mut().new_response_outparam(sender)?;
-        let proxy = self.instance_pre.instantiate_async(&mut store).await?;
+            let mut store = self.wasi_store_for_request(req_id);
+
+            let req = store.data_mut().new_incoming_request(Scheme::Http, req)?;
+            let out = store.data_mut().new_response_outparam(sender)?;
+            let proxy = self.instance_pre.instantiate_async(&mut store).await?;
+
+            (proxy, store, req, out)
+        };
 
         let task = self.tracker.spawn(async move {
             if let Err(e) = proxy
